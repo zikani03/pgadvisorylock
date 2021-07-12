@@ -81,6 +81,18 @@ func ReleaseLock(p *sql.DB, lockID int64) (bool, error) {
 	return isLockReleased, nil
 }
 
+// ReleaseLock releases a shared session-level advisory lock
+// and returns whether lock was released successfully or not
+func ReleaseSharedLock(p *sql.DB, lockID int64) (bool, error) {
+	var isLockReleased bool
+	err := p.QueryRowContext(context.Background(), "SELECT pg_advisory_unlock_shared($1::bigint)", lockID).Scan(&isLockReleased)
+	if err != nil {
+		return false, err
+	}
+
+	return isLockReleased, nil
+}
+
 func FetchAdvisoryLocks(conn *sql.DB) error {
 	rows, err := conn.QueryContext(context.Background(), "SELECT objid, pid, granted FROM pg_locks WHERE locktype='advisory'")
 
