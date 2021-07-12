@@ -10,7 +10,7 @@ import (
 
 // AcquireLock acquires a session-level postgresql advisory lock
 // uses pg_try_advisory_lock which returns immediately
-func AcquireLock(p *sql.DB, lockID int64) (bool, error) {
+func AcquireLockInt64(p *sql.DB, lockID int64) (bool, error) {
 	var isLockAquired bool = false
 	// fmt.Println("Acquiring lock on id:", lockID)
 	err := p.QueryRowContext(context.Background(), "SELECT pg_try_advisory_lock($1);", lockID).Scan(&isLockAquired)
@@ -20,17 +20,53 @@ func AcquireLock(p *sql.DB, lockID int64) (bool, error) {
 	return isLockAquired, nil
 }
 
-// AcquireLockStr acquires a session-level postgresql advisory lock
-// Hashes the value with xxh3 hash to generate a unique lockID
-// see: AcquireLock
-func AcquireLockStr(p *sql.DB, val string) (bool, int64, error) {
-	valxxh := xxh3.HashString(val)
-	ok, err := AcquireLock(p, int64(valxxh))
+// AcquireLock acquires a shared session-level postgresql advisory lock
+// uses pg_try_advisory_lock which returns immediately
+func AcquireSharedLockInt64(p *sql.DB, lockID int64) (bool, error) {
+	var isLockAquired bool = false
+	// fmt.Println("Acquiring lock on id:", lockID)
+	err := p.QueryRowContext(context.Background(), "SELECT pg_try_advisory_lock_shared($1);", lockID).Scan(&isLockAquired)
+	if err != nil {
+		return false, err
+	}
+	return isLockAquired, nil
+}
+
+// AcquireLock acquires a session-level postgresql advisory lock
+// uses pg_try_advisory_lock which returns immediately
+func AcquireSharedLock(p *sql.DB, lockID string) (bool, int64, error) {
+	lockIDHash := int64(xxh3.HashString(lockID))
+	ok, err := AcquireSharedLockInt64(p, lockIDHash)
 	if err != nil {
 		return false, 0, err
 	}
 
-	return ok, int64(valxxh), nil
+	return ok, lockIDHash, nil
+}
+
+// AcquireLock acquires a transaction-level postgresql advisory lock
+// uses pg_try_advisory_xact_lock which returns immediately
+func AcquireTxnLock(p *sql.Tx, lockID int64) (bool, error) {
+	var isLockAquired bool = false
+	// fmt.Println("Acquiring lock on id:", lockID)
+	err := p.QueryRowContext(context.Background(), "SELECT pg_try_advisory_xact_lock($1);", lockID).Scan(&isLockAquired)
+	if err != nil {
+		return false, err
+	}
+	return isLockAquired, nil
+}
+
+// AcquireLock acquires a session-level postgresql advisory lock
+// Hashes the value with xxh3 hash to generate a unique lockID
+// see: AcquireLock
+func AcquireLock(p *sql.DB, lockID string) (bool, int64, error) {
+	lockIDHash := int64(xxh3.HashString(lockID))
+	ok, err := AcquireLockInt64(p, lockIDHash)
+	if err != nil {
+		return false, 0, err
+	}
+
+	return ok, lockIDHash, nil
 }
 
 // ReleaseLock releases an advisory lock and returns whether lock was released
