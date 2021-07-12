@@ -16,12 +16,22 @@ import (
 
 func main() {
     // conn is *sql.DB wherever you get your flavour from
-    ok, id, err := pgadvisorylock.AcquireLockStr(conn, "person:1")
+    ok, id, err := pgadvisorylock.AcquireLock(conn, "person:1")
     if !ok {
         panic("Failed to acquire lock")
     }
 
     ok, err := pgadvisorylock.ReleaseLock(conn, id)
+    if !ok {
+        panic("Failed to release lock")
+    }
+
+    ok, id, err := pgadvisorylock.AcquireSharedLock(conn, "person:1")
+    if !ok {
+        panic("Failed to acquire lock")
+    }
+
+    ok, err := pgadvisorylock.ReleaseSharedLock(conn, id)
     if !ok {
         panic("Failed to release lock")
     }
