@@ -3,17 +3,25 @@ package pgadvisorylock
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"encoding/json"
 
 	"github.com/zeebo/xxh3"
 )
 
+type AdvisoryLock struct {
+	Pid      int64  `json:"pid"`      // the process id of the process that acquired the lock
+	ObjectID int64  `json:"objectID"` // ObjectID when using 32 bit lock with class id
+	ClassID  int64  `json:"classID"`  // ClassID when using 32 bit lock with object id
+	Granted  bool   `json:"granted"`  // Whether the lock is held or not
+	Locktype string `json:"locktype"` // the type of lock
+}
+
 // AcquireLock acquires a session-level postgresql advisory lock
 // uses pg_try_advisory_lock which returns immediately
-func AcquireLockInt64(p *sql.DB, lockID int64) (bool, error) {
+func AcquireLockInt64(p *sql.DB, ctx context.Context, lockID int64) (bool, error) {
 	var isLockAquired bool = false
-	// fmt.Println("Acquiring lock on id:", lockID)
-	err := p.QueryRowContext(context.Background(), "SELECT pg_try_advisory_lock($1);", lockID).Scan(&isLockAquired)
+
+	err := p.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1);", lockID).Scan(&isLockAquired)
 	if err != nil {
 		return false, err
 	}
@@ -22,10 +30,10 @@ func AcquireLockInt64(p *sql.DB, lockID int64) (bool, error) {
 
 // AcquireLock acquires a shared session-level postgresql advisory lock
 // uses pg_try_advisory_lock which returns immediately
-func AcquireSharedLockInt64(p *sql.DB, lockID int64) (bool, error) {
+func AcquireSharedLockInt64(p *sql.DB, ctx context.Context, lockID int64) (bool, error) {
 	var isLockAquired bool = false
-	// fmt.Println("Acquiring lock on id:", lockID)
-	err := p.QueryRowContext(context.Background(), "SELECT pg_try_advisory_lock_shared($1);", lockID).Scan(&isLockAquired)
+
+	err := p.QueryRowContext(ctx, "SELECT pg_try_advisory_lock_shared($1);", lockID).Scan(&isLockAquired)
 	if err != nil {
 		return false, err
 	}
@@ -34,9 +42,9 @@ func AcquireSharedLockInt64(p *sql.DB, lockID int64) (bool, error) {
 
 // AcquireLock acquires a session-level postgresql advisory lock
 // uses pg_try_advisory_lock which returns immediately
-func AcquireSharedLock(p *sql.DB, lockID string) (bool, int64, error) {
+func AcquireSharedLock(p *sql.DB, ctx context.Context, lockID string) (bool, int64, error) {
 	lockIDHash := int64(xxh3.HashString(lockID))
-	ok, err := AcquireSharedLockInt64(p, lockIDHash)
+	ok, err := AcquireSharedLockInt64(p, ctx, lockIDHash)
 	if err != nil {
 		return false, 0, err
 	}
@@ -46,10 +54,10 @@ func AcquireSharedLock(p *sql.DB, lockID string) (bool, int64, error) {
 
 // AcquireLock acquires a transaction-level postgresql advisory lock
 // uses pg_try_advisory_xact_lock which returns immediately
-func AcquireTxnLock(p *sql.Tx, lockID int64) (bool, error) {
+func AcquireTxnLock(p *sql.Tx, ctx context.Context, lockID int64) (bool, error) {
 	var isLockAquired bool = false
 	// fmt.Println("Acquiring lock on id:", lockID)
-	err := p.QueryRowContext(context.Background(), "SELECT pg_try_advisory_xact_lock($1);", lockID).Scan(&isLockAquired)
+	err := p.QueryRowContext(ctx, "SELECT pg_try_advisory_xact_lock($1);", lockID).Scan(&isLockAquired)
 	if err != nil {
 		return false, err
 	}
@@ -59,9 +67,9 @@ func AcquireTxnLock(p *sql.Tx, lockID int64) (bool, error) {
 // AcquireLock acquires a session-level postgresql advisory lock
 // Hashes the value with xxh3 hash to generate a unique lockID
 // see: AcquireLock
-func AcquireLock(p *sql.DB, lockID string) (bool, int64, error) {
+func AcquireLock(p *sql.DB, ctx context.Context, lockID string) (bool, int64, error) {
 	lockIDHash := int64(xxh3.HashString(lockID))
-	ok, err := AcquireLockInt64(p, lockIDHash)
+	ok, err := AcquireLockInt64(p, ctx, lockIDHash)
 	if err != nil {
 		return false, 0, err
 	}
@@ -71,9 +79,9 @@ func AcquireLock(p *sql.DB, lockID string) (bool, int64, error) {
 
 // ReleaseLock releases an advisory lock and returns whether lock was released
 // successfully or not
-func ReleaseLock(p *sql.DB, lockID int64) (bool, error) {
+func ReleaseLock(p *sql.DB, ctx context.Context, lockID int64) (bool, error) {
 	var isLockReleased bool
-	err := p.QueryRowContext(context.Background(), "SELECT pg_advisory_unlock($1::bigint)", lockID).Scan(&isLockReleased)
+	err := p.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", lockID).Scan(&isLockReleased)
 	if err != nil {
 		return false, err
 	}
@@ -83,9 +91,9 @@ func ReleaseLock(p *sql.DB, lockID int64) (bool, error) {
 
 // ReleaseLock releases a shared session-level advisory lock
 // and returns whether lock was released successfully or not
-func ReleaseSharedLock(p *sql.DB, lockID int64) (bool, error) {
+func ReleaseSharedLock(p *sql.DB, ctx context.Context, lockID int64) (bool, error) {
 	var isLockReleased bool
-	err := p.QueryRowContext(context.Background(), "SELECT pg_advisory_unlock_shared($1::bigint)", lockID).Scan(&isLockReleased)
+	err := p.QueryRowContext(ctx, "SELECT pg_advisory_unlock_shared($1::bigint)", lockID).Scan(&isLockReleased)
 	if err != nil {
 		return false, err
 	}
@@ -93,18 +101,24 @@ func ReleaseSharedLock(p *sql.DB, lockID int64) (bool, error) {
 	return isLockReleased, nil
 }
 
-func FetchAdvisoryLocks(conn *sql.DB) error {
-	rows, err := conn.QueryContext(context.Background(), "SELECT objid, pid, granted FROM pg_locks WHERE locktype='advisory'")
+func FetchAdvisoryLocks(conn *sql.DB, ctx context.Context) ([]*AdvisoryLock, error) {
+	rows, err := conn.QueryContext(ctx, "SELECT json_build_object('objectID', objid::integer, 'classID', classid, 'pid', pid, 'granted', granted, 'locktype', locktype) FROM pg_locks WHERE locktype = 'advisory'")
 
+	advisoryLocks := make([]*AdvisoryLock, 0)
 	defer rows.Close()
-	for rows.Next() {
-		var objid int64
-		var pid int64
-		var granted bool
-		rows.Scan(&objid, &pid, &granted)
 
-		fmt.Printf("ObjectID: %d PID:%d Granted:%v\n", objid, pid, granted)
+	for rows.Next() {
+		var jsonstring string
+		err = rows.Scan(&jsonstring)
+		if err != nil {
+			return nil, err
+		}
+
+		lock := new(AdvisoryLock)
+		json.Unmarshal([]byte(jsonstring), &lock)
+
+		advisoryLocks = append(advisoryLocks, lock)
 	}
 
-	return err
+	return advisoryLocks, nil
 }
