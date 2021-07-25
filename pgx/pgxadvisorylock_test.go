@@ -12,16 +12,17 @@ import (
 func TestPgxAdvisoryLock(t *testing.T) {
 	assert := assert.New(t)
 
-	conn, err := pgx.Connect(context.Background(), "dbname=postgres")
-	defer conn.Close(context.Background())
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, "dbname=postgres")
+	defer conn.Close(ctx)
 
 	assert.NoError(err)
 	//var lockID int64
-	acquired, lockID, err := pgxadvisorylock.AcquireLock(conn, "person:100")
+	acquired, lockID, err := pgxadvisorylock.AcquireLock(conn, ctx, "person:100")
 	assert.True(acquired)
 	assert.NoError(err)
 
-	released, err := pgxadvisorylock.ReleaseLock(conn, lockID)
+	released, err := pgxadvisorylock.ReleaseLock(conn, ctx, lockID)
 	assert.True(released)
 	assert.NoError(err)
 }
