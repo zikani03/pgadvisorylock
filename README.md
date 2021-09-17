@@ -1,11 +1,16 @@
 pgadvisorylock
 ===
 
-> NOTE: This is pretty much a work-in-progress, not production ready etc..
-
 Go library for acquiring and releasing [PostgreSQL's Advisory Locks](https://www.postgresql.org/docs/13/explicit-locking.html#ADVISORY-LOCKS) with added support for [pgx](https://github.com/jackc/pgx).
 
-Example Usage
+
+## Use in your project
+
+```sh
+$ go get github.com/zikani03/pgadvisorylock
+```
+
+## Example Usage
 
 ```go
 package main
@@ -53,4 +58,4 @@ func main() {
 
 ---
 
-Copyright (c) Zikani
+Copyright (c) Zikani Nyirenda Mwase
